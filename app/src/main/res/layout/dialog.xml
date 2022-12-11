@@ -22,47 +22,44 @@
 
         <RadioButton
             android:id="@+id/work"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="工作"
             android:checked="true"
             android:layout_marginTop="5sp"
             android:layout_marginBottom="5sp"
-            android:textSize="18sp"/>
+            android:textSize="16sp"/>
 
         <RadioButton
             android:id="@+id/study"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="学习"
-            android:layout_marginStart="5sp"
             android:layout_marginTop="5sp"
             android:layout_marginBottom="5sp"
-            android:textSize="18sp"/>
+            android:textSize="16sp"/>
 
         <RadioButton
             android:id="@+id/activity"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="活动"
-            android:layout_marginStart="5sp"
             android:layout_marginTop="5sp"
             android:layout_marginBottom="5sp"
-            android:textSize="18sp"/>
+            android:textSize="16sp"/>
 
         <RadioButton
             android:id="@+id/others"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="其他"
-            android:layout_marginStart="5sp"
             android:layout_marginTop="5sp"
             android:layout_marginBottom="5sp"
-            android:textSize="18sp"/>
+            android:textSize="16sp"/>
 
     </RadioGroup>
 
