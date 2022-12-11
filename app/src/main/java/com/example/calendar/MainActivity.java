@@ -1,5 +1,6 @@
 package com.example.calendar;
 
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.haibin.calendarview.Calendar;
@@ -7,10 +8,16 @@ import com.haibin.calendarview.CalendarLayout;
 import com.haibin.calendarview.CalendarView;
 
 
+import android.content.ContentValues;
+import android.content.Intent;
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
 import android.graphics.Paint;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -24,14 +31,139 @@ public class MainActivity extends AppCompatActivity {
     CalendarView calendarView;
     CalendarLayout calendarLayout;
 
+    EditText editText;
+    TextView textView;
+    Button edit_btn;
+    Button del_btn;
+    Button cancel_btn;
+    Button save_btn;
+    //  数据库对象
+    SQLiteDatabase db;
+    MyHelper myHelper;
+    //  选中日期是否已经保存了备忘
+    boolean flag;
+    //  点击取消时闪回原有文本
+    String flash_back;
+    //  标注用map
+    Map<String, Calendar> map;
+    //  当前日期的标注
+    String type;
+    //  上个日期
+    Calendar pre_calendar;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.calendar_view);
 
+        flag = false;
+        flash_back = "";
+        editText = findViewById(R.id.edit_content);
+        editText.setVisibility(View.GONE);
+        textView = findViewById(R.id.show_content);
+        edit_btn = findViewById(R.id.edit);
+        del_btn = findViewById(R.id.del);
+        cancel_btn = findViewById(R.id.cancel);
+        save_btn = findViewById(R.id.save);
+        myHelper = new MyHelper(this);
+        db = myHelper.getReadableDatabase();
+
         init_view();
         init_theme();
         init_listen();
+
+        //获取当前日期
+        Calendar calendar = calendarView.getSelectedCalendar();
+        display(calendar);
+        pre_calendar = calendar;
+
+        edit_btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                //切换到编辑界面
+                edit_btn.setVisibility(View.GONE);
+                del_btn.setVisibility(View.GONE);
+                cancel_btn.setVisibility(View.VISIBLE);
+                save_btn.setVisibility(View.VISIBLE);
+                flash_back = String.valueOf(editText.getText());
+                editText.setVisibility(View.VISIBLE);
+                textView.setVisibility(View.GONE);
+
+                if(!flag) {
+                    //打开弹窗
+                    Intent intent = new Intent(MainActivity.this, com.example.calendar.DialogActivity.class);
+                    startActivityForResult(intent,1);
+                }
+                //弹窗方法2
+//                RelativeLayout dialog = (RelativeLayout) getLayoutInflater().inflate(R.layout.dialog, null);
+//                AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
+//                builder.setView(dialog).create().show();
+            }
+        });
+
+        del_btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                flag = false;
+                flash_back = "";
+                //获取当前选中日期
+                Calendar calendar = calendarView.getSelectedCalendar();
+                String date = calendar.getYear() + "-" + calendar.getMonth() + "-" + calendar.getDay();
+                //从数据库删除
+                if(db.delete("note","date=?",new String[]{date})>0)
+                    Log.e("note","删除成功");
+                //刷新显示和标注
+                display(calendar);
+            }
+        });
+
+        cancel_btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                //获取当前选中日期
+                Calendar calendar = calendarView.getSelectedCalendar();
+                //根据数据库还原
+                display(calendar);
+            }
+        });
+
+        save_btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                //获取当前文本
+                String content = String.valueOf(editText.getText());
+                //按钮显示切换
+                edit_btn.setVisibility(View.VISIBLE);
+                cancel_btn.setVisibility(View.GONE);
+                save_btn.setVisibility(View.GONE);
+                //获取当前选中日期
+                Calendar calendar = calendarView.getSelectedCalendar();
+                String date = calendar.getYear() + "-" + calendar.getMonth() + "-" + calendar.getDay();
+
+                if(!content.equals("")) { //若编辑后不为空
+                    del_btn.setVisibility(View.VISIBLE); //删除键显示
+                    flag = true;
+                    //存储到数据库
+                    ContentValues contentValues = new ContentValues();
+                    contentValues.put("date",date);
+                    contentValues.put("content",content);
+                    contentValues.put("type",type);
+                    if(db.replace("note",null,contentValues)>0) {
+                        Log.e("note","插入成功");
+                    }
+                } else { //若编辑后为空
+                    del_btn.setVisibility(View.GONE); //不显示删除
+                    flag = false;
+                    //从数据库删除
+                    if(db.delete("note","date=?",new String[]{date}) > 0)
+                        Log.e("note","删除成功");
+                }
+
+                //刷新显示,标注也会在此更新
+                display(calendar);
+            }
+        });
+
     }
 
     private void init_view() {
@@ -71,6 +203,21 @@ public class MainActivity extends AppCompatActivity {
                 mTextYear.setText(String.valueOf(calendar.getYear()));
                 mTextLunar.setText(calendar.getLunar());
                 mYear = calendar.getYear();
+
+                //如果用户在上个日期设置标注后，突然切换日期，需要把上个日期的标注删掉
+                //该操作需要在display之前，因为此时的flag还在记录上个日期
+                if(!flag){
+                    Calendar d1 = getSchemeCalendar(pre_calendar.getYear(), pre_calendar.getMonth(), pre_calendar.getDay(), 0xFFcc0000, "");
+                    calendarView.removeSchemeDate(d1);
+                }
+                //刷新显示
+                display(calendar);
+                //更新pre_calendar
+                pre_calendar = calendar;
+
+//                Calendar calendar1 = calendarView.getSelectedCalendar();
+//                String s = "" + calendar1.getYear() + "-" + calendar1 .getMonth() + "-" + calendar1.getDay();
+//                Log.e("choose",s);
             }
         });
 //      监听月份改变
@@ -117,17 +264,20 @@ public class MainActivity extends AppCompatActivity {
 //        calendarView.setTextColor(0xFF40db25, 0xFF40db25, 0xFF40db25, 0xFF40db25, 0xFF40db25);
 
 //        (标点，右上角标注)
-        Map<String, Calendar> map = new HashMap<>();
-        String s = getSchemeCalendar(2022, 12, 10, 0xFFFFFFFF, "放假").toString();
-        Log.e("Color: ", s);
-        map.put(getSchemeCalendar(2022, 12, 10, 0xFFcc0000, "放假").toString(),
-                getSchemeCalendar(2022, 12, 10, 0xFFcc0000, "放假"));
-        map.put(getSchemeCalendar(2022, 12, 11, 0xFFcc0000, "放假").toString(),
-                getSchemeCalendar(2022, 12, 11, 0xFFcc0000, "放假"));
-        map.put(getSchemeCalendar(2022, 12, 12, 0xFFcc0000, "放假").toString(),
-                getSchemeCalendar(2022, 12, 12, 0xFFcc0000, "放假"));
-        calendarView.setSchemeDate(map);
-        calendarView.removeSchemeDate(getSchemeCalendar(2022, 12, 11, 0xFFcc0000, "放假"));
+        map = new HashMap<>();
+        //设置已有标注
+        set_icons();
+//        Map<String, Calendar> map = new HashMap<>();
+//        String s = getSchemeCalendar(2022, 12, 10, 0xFFFFFFFF, "放假").toString();
+//        Log.e("Color: ", s);
+//        map.put(getSchemeCalendar(2022, 12, 10, 0xFFcc0000, "放假").toString(),
+//                getSchemeCalendar(2022, 12, 10, 0xFFcc0000, "放假"));
+//        map.put(getSchemeCalendar(2022, 12, 11, 0xFFcc0000, "放假").toString(),
+//                getSchemeCalendar(2022, 12, 11, 0xFFcc0000, "放假"));
+//        map.put(getSchemeCalendar(2022, 12, 12, 0xFFcc0000, "放假").toString(),
+//                getSchemeCalendar(2022, 12, 12, 0xFFcc0000, "放假"));
+//        calendarView.setSchemeDate(map);
+//        calendarView.removeSchemeDate(getSchemeCalendar(2022, 12, 11, 0xFFcc0000, "放假"));
     }
 
     private Calendar getSchemeCalendar(int year, int month, int day, int color, String text) {
@@ -138,5 +288,100 @@ public class MainActivity extends AppCompatActivity {
         calendar.setSchemeColor(color);//如果单独标记颜色、则会使用这个颜色
         calendar.setScheme(text);
         return calendar;
+    }
+    private void display(Calendar calendar)
+    {
+        String date = calendar.getYear() + "-" + calendar.getMonth() + "-" + calendar.getDay();
+        Cursor cursor = db.rawQuery("select content,type from note where date='" + date + "'",null);
+
+        if(cursor.moveToFirst()){
+            flag = true;
+            String content = cursor.getString(0);
+            type = cursor.getString(1);
+            Log.e("content",content);
+            Log.e("type",type);
+//            flash_back = content;
+            editText.setText(content);
+            textView.setText(content);
+            del_btn.setVisibility(View.VISIBLE);
+            //满足刷新标注需要
+            Calendar d1 = getSchemeCalendar(calendar.getYear(), calendar.getMonth(), calendar.getDay(), 0xFFcc0000, type);
+            map.put(d1.toString(), d1);
+            calendarView.setSchemeDate(map);
+        }
+        else {
+            Log.e("content","为空");
+            flag = false;
+//            flash_back = "";
+            editText.setText("");
+            textView.setText("在此添加备注");
+            del_btn.setVisibility(View.GONE);
+            //满足刷新标注需要
+            Calendar d1 = getSchemeCalendar(calendar.getYear(), calendar.getMonth(), calendar.getDay(), 0xFFcc0000, "");
+            calendarView.removeSchemeDate(d1);
+        }
+        editText.setVisibility(View.GONE);
+        textView.setVisibility(View.VISIBLE);
+        edit_btn.setVisibility(View.VISIBLE);
+        cancel_btn.setVisibility(View.GONE);
+        save_btn.setVisibility(View.GONE);
+    }
+
+    private void set_icons()
+    {
+        Cursor cursor = db.rawQuery("select date,type from note",null);
+        if(cursor.moveToFirst()) {
+            do {
+                String date = cursor.getString(0);
+                String type = cursor.getString(1);
+                String year = "",month = "",day = "";
+                //获取年月日
+                int k = 0;
+                for(int i=0;i<date.length();i++) {
+                    char ch = date.charAt(i);
+                    if(ch == '-')
+                        k++;
+                    else {
+                        if(k == 0) year += ch;
+                        if(k == 1) month += ch;
+                        if(k == 2) day +=ch;
+                    }
+                }
+                Log.e("year month day",year + month + day);
+                //放入map
+                Calendar d1 = getSchemeCalendar(Integer.valueOf(year), Integer.valueOf(month), Integer.valueOf(day), 0xFFcc0000, type);
+                map.put(d1.toString(), d1);
+            }while (cursor.moveToNext());
+        }
+        //设置标注
+        calendarView.setSchemeDate(map);
+    }
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if(requestCode==1) {
+            //获取当前选中日期
+            Calendar calendar = calendarView.getSelectedCalendar();
+            //用户点击取消
+            if(resultCode==0) {
+                display(calendar);
+                return;
+            }
+
+            switch(resultCode) {
+                case R.id.work:
+                    type = "工作";break;
+                case R.id.study:
+                    type = "学习";break;
+                case R.id.activity:
+                    type = "活动";break;
+                default:
+                    type = "其他";break;
+            }
+            Calendar d1 = getSchemeCalendar(calendar.getYear(), calendar.getMonth(), calendar.getDay(), 0xFFcc0000, type);
+            map.put(d1.toString(), d1);
+            calendarView.setSchemeDate(map);
+        }
     }
 }
